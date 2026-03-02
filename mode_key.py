@@ -37,6 +37,8 @@ class KeyPublisher(Node):
                 self.get_logger().info("offboard control command sent")
             elif key == 'l':
                 self.get_logger().info("land control command sent")
+            elif key == 't':
+                self.get_logger().info("take off command sent")
             else:
                 self.get_logger().info(f"unknown command: {key}")
 

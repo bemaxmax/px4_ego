@@ -47,58 +47,69 @@ class OffboardControl(Node):
     def __init__(self):
         super().__init__('ego_pos_command_publisher')
 
-                # QoS profiles
+
         qos_profile_pub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
             history=QoSHistoryPolicy.KEEP_LAST,
-            depth=0
+            depth=1
         )
 
         qos_profile_sub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             durability=QoSDurabilityPolicy.VOLATILE,
             history=QoSHistoryPolicy.KEEP_LAST,
-            depth=0
+            depth=1
         )
-
-        self.status_sub = self.create_subscription(
+        
+        # self.status_sub_v0 = self.create_subscription(
+        #     VehicleStatus,
+        #     'fmu/out/vehicle_status',
+        #     self.vehicle_status_callback,
+        #     qos_profile_sub)
+        self.status_sub_v1 = self.create_subscription(
             VehicleStatus,
-            'fmu/out/vehicle_status',
+            'fmu/out/vehicle_status_v2',
             self.vehicle_status_callback,
             qos_profile_sub)
-        self.status_sub = self.create_subscription(
-            VehicleStatus,
-            'fmu/out/vehicle_status_v1',
-            self.vehicle_status_callback,
-            qos_profile_sub)
+        #获取本地位置信息，包含位置、速度和姿态等数据，在仿真中使用
         self.vehicle_local_position_sub = self.create_subscription(
             VehicleLocalPosition, '/fmu/out/vehicle_local_position_v1', self.vehicle_local_position_callback, qos_profile_sub)
+        #获取视觉里程计信息，包含位置、速度和姿态等数据，在真实实验中使用
         self.vehicle_visual_odom_sub = self.create_subscription(
             VehicleOdometry, '/fmu/in/vehicle_visual_odometry', self.vehicle_visual_odom_callback, qos_profile_sub)
+        #接收来自规划模块的位置信息，包含期望位置、速度和航向等数据，用于生成飞行控制命令
         self.planning_pos_cmd_sub = self.create_subscription(
             PositionCommand,'/drone_0_planning/pos_cmd', self.planning_pos_cmd_callback, qos_profile_sub)
+    
+        #接收控制模式切换命令，包含'm'（manual）、't'（takeoff）、'p'（position hold）、'o'（offboard control）和'l'（land）等模式，用于切换飞行控制策略
         self.mode_cmd_sub = self.create_subscription(
             String, '/mode_key', self.mode_cmd_callback, qos_profile_sub)
 
+        # 发布离线控制模式心跳信号
         self.publisher_offboard_mode = self.create_publisher(OffboardControlMode, 'fmu/in/offboard_control_mode', qos_profile_pub)
+        #发布目标点（正常）
         self.publisher_trajectory = self.create_publisher(TrajectorySetpoint, 'fmu/in/trajectory_setpoint', qos_profile_pub)
+        #发布控制模式（不正常）
         self.publisher_vehicle_command = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile_pub)
 
-        self.control_mode = 'm'
+        self.control_mode = 'm'#初始控制模式为manual（手动），通过订阅'/mode_key'话题接收控制模式切换命令
         self.offboard_setpoint_counter = 0
         self.land_trigger_counter = 0
+        
         self.vehicle_local_position = VehicleLocalPosition()
+        self.vehicle_local_position_received = False
         self.vehicle_visual_odom = VehicleOdometry()
+        self.vehicle_visual_odom_received = False
         self.vehicle_status = VehicleStatus()
 
         timer_period = 0.02  # seconds
         self.timer = self.create_timer(timer_period, self.cmdloop_callback)
         self.dt = timer_period
+
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
         self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
-        self.vehicle_local_position_received = False
-        self.vehicle_visual_odom_received = False
+        
         self.planning_pos_command_received = False
         self.takeoff_hover_des_set = False
         self.offboard_hover_des_set = False
@@ -112,12 +123,16 @@ class OffboardControl(Node):
             [1, 0, 0],
             [0, 0, -1]
         ])
+
+
+    #从四元数提取航向角（yaw）
     def quaternion_to_yaw(self, w, x, y, z):
         # yaw (Z axis rotation)
         siny_cosp = 2 * (w * z + x * y)
         cosy_cosp = 1 - 2 * (y * y + z * z)
         return math.atan2(siny_cosp, cosy_cosp)
 
+    #订阅fmu/out/vehicle_status_v1话题
     def vehicle_status_callback(self, msg):
         # TODO: handle NED->ENU transformation
         # print("NAV_STATUS: ", msg.nav_state)
@@ -125,20 +140,23 @@ class OffboardControl(Node):
         self.nav_state = msg.nav_state
         self.arming_state = msg.arming_state
         self.vehicle_status = msg
-    
+
+    #订阅fmu/out/vehicle_local_position_v1话题
+    def vehicle_local_position_callback(self, vehicle_local_position):
+        self.vehicle_local_position = vehicle_local_position
+        self.vehicle_local_position_received = True
+    #订阅/fmu/in/vehicle_visual_odometry话题
     def vehicle_visual_odom_callback(self, msg):
         self.vehicle_visual_odom = msg
         self.vehicle_visual_odom_received = True
-
+        
+    #订阅/drone_0_planning/pos_cmd话题
     def planning_pos_cmd_callback(self, msg):
         self.latest_planning_msg = msg
         self.planning_pos_command_received = True
-
-    def vehicle_local_position_callback(self, vehicle_local_position):
-        """Callback function for vehicle_local_position topic subscriber."""
-        self.vehicle_local_position = vehicle_local_position
-        self.vehicle_local_position_received = True
+        self.get_logger().info("Received planning position command")
     
+    #订阅/mode_key话题
     def mode_cmd_callback(self, msg):
         self.control_mode = msg.data
     
@@ -211,8 +229,10 @@ class OffboardControl(Node):
 
     def position_msg_pub(self):
         msg = TrajectorySetpoint()
+        #判断为仿真环境还是实际环境，并根据接收到的位置信息生成起飞悬停的设定点，发布给PX4进行控制
         if (self.vehicle_local_position_received and not self.vehicle_visual_odom_received):
             if not self.takeoff_hover_des_set:
+                #初始化起飞悬停设定点为当前位置的水平坐标和-0.9米的高度，航向与当前位置一致
                 self.hover_setpoint.position[0] = self.vehicle_local_position.x 
                 self.hover_setpoint.position[1] = self.vehicle_local_position.y 
                 self.hover_setpoint.position[2] = -0.9
@@ -352,10 +372,11 @@ class OffboardControl(Node):
             # self.enter_position_mode()
             self.takeoff_hover_des_set = False
             self.hover_cmd_pub()
-            self.get_logger().info("No command in offboard, return to position mode")
+            self.get_logger().info("No command in offboard, hovermode")
             return
 
         if (self.control_mode == 'o' and self.planning_pos_command_received):
+            self.get_logger().info("offboard control mode")
             if self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
                 # self.publish_offboard_control_heartbeat_signal()
                 self.engage_offboard_mode()
@@ -372,7 +393,7 @@ class OffboardControl(Node):
                         self.in_position_hold = True
                         # self.enter_position_mode()
                         self.hover_cmd_pub()
-                        self.get_logger().info("hhhhh")
+                        self.get_logger().info("hovermode in offboard")
                         return
         
         if self.control_mode == 'l':
