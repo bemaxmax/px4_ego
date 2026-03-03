@@ -11,7 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'numpy'],
     zip_safe=True,
     maintainer='hdn',
     maintainer_email='dongnanhu6556@gmail.com',
@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             "offboard_control_test = px4_ego_py.offboard_control_test:main",
+            "ds5_mode_teleop = px4_ego_py.ds5_mode_teleop:main",
         ],
     },
 )

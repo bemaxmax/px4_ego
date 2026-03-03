@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
+
+import argparse
+import sys
+from pathlib import Path
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
 
-class KeyPublisher(Node):
+REPO_ROOT = Path(__file__).resolve().parent
+PACKAGE_ROOT = REPO_ROOT / 'src' / 'px4_ego_py'
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+
+class KeyboardPublisher(Node):
     def __init__(self):
         super().__init__('key_publisher')
-
-        # 创建发布者
         self.pub = self.create_publisher(String, '/mode_key', 10)
-
         self.get_logger().info("键盘指令发布节点启动，等待输入字母...")
 
     def run(self):
@@ -20,32 +28,15 @@ class KeyPublisher(Node):
             if not key:
                 continue
 
-            # 发布消息
             msg = String()
             msg.data = key
             self.pub.publish(msg)
-
-            # 打印 info
             self.get_logger().info(f"已发布字母：{key}")
 
-            # 可选：对不同字母打印不同提示
-            if key == 'm':
-                self.get_logger().info("manual control command sent")
-            elif key == 'p':
-                self.get_logger().info("position control command sent")
-            elif key == 'o':
-                self.get_logger().info("offboard control command sent")
-            elif key == 'l':
-                self.get_logger().info("land control command sent")
-            elif key == 't':
-                self.get_logger().info("take off command sent")
-            else:
-                self.get_logger().info(f"unknown command: {key}")
 
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = KeyPublisher()
+def run_keyboard_mode():
+    rclpy.init()
+    node = KeyboardPublisher()
 
     try:
         node.run()
@@ -54,6 +45,34 @@ def main(args=None):
 
     node.destroy_node()
     rclpy.shutdown()
+
+
+def run_ds5_mode():
+    from px4_ego_py.ds5_mode_teleop import main as ds5_main
+
+    ds5_main()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='默认启动 DS5 手柄模式；如需旧键盘模式，请加 --keyboard。'
+    )
+    parser.add_argument(
+        '--keyboard',
+        action='store_true',
+        help='使用原来的键盘输入模式，而不是 DS5 手柄模式',
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    if args.keyboard:
+        run_keyboard_mode()
+        return
+
+    run_ds5_mode()
 
 
 if __name__ == "__main__":

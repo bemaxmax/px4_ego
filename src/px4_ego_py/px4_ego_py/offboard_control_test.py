@@ -118,6 +118,10 @@ class OffboardControl(Node):
         # which would result in large discontinuities in setpoints
         self.theta = 0.0
         self.latest_planning_msg = None
+        self.last_control_state_log = None
+        self.last_offboard_control_log = None
+        self.last_arm_state = None
+
         self.ros_to_fmu = np.array([
             [0, 1, 0],
             [1, 0, 0],
@@ -137,6 +141,15 @@ class OffboardControl(Node):
         # TODO: handle NED->ENU transformation
         # print("NAV_STATUS: ", msg.nav_state)
         # print("  - offboard status: ", VehicleStatus.NAVIGATION_STATE_OFFBOARD)
+        if self.last_arm_state is None:
+            self.last_arm_state = msg.arming_state
+        elif msg.arming_state != self.last_arm_state:
+            if msg.arming_state == VehicleStatus.ARMING_STATE_ARMED:
+                self.get_logger().info("Armed successfully")
+            elif msg.arming_state == VehicleStatus.ARMING_STATE_DISARMED:
+                self.get_logger().info("Disarmed successfully")
+            self.last_arm_state = msg.arming_state
+
         self.nav_state = msg.nav_state
         self.arming_state = msg.arming_state
         self.vehicle_status = msg
@@ -152,9 +165,10 @@ class OffboardControl(Node):
         
     #订阅/drone_0_planning/pos_cmd话题
     def planning_pos_cmd_callback(self, msg):
+        if not self.planning_pos_command_received:
+            self.get_logger().info(f"Received first planning position command")
         self.latest_planning_msg = msg
         self.planning_pos_command_received = True
-        self.get_logger().info("Received planning position command")
     
     #订阅/mode_key话题
     def mode_cmd_callback(self, msg):
@@ -175,7 +189,6 @@ class OffboardControl(Node):
         """Switch to offboard mode."""
         self.publish_vehicle_command(
             VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
-        self.get_logger().info("Switching to offboard mode")
     
     def enter_position_mode(self):
         """Exit offboard mode and switch to position mode."""
@@ -190,7 +203,6 @@ class OffboardControl(Node):
         """Send an arm command to the vehicle."""
         self.publish_vehicle_command(
             VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0)
-        self.get_logger().info('Arm command sent')
 
     def takeoff(self):
         """Takeoff to a specified altitude (default 1m)."""
@@ -200,13 +212,11 @@ class OffboardControl(Node):
     def land(self):
         """Switch to land mode."""
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
-        self.get_logger().info("Switching to land mode")
 
     def disarm(self):
         """Send a disarm command to the vehicle."""
         self.publish_vehicle_command(
             VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=0.0)
-        self.get_logger().info('Disarm command sent')
     
     def publish_vehicle_command(self, command, **params) -> None:
         """Publish a vehicle command."""
@@ -226,6 +236,12 @@ class OffboardControl(Node):
         msg.from_external = True
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         self.publisher_vehicle_command.publish(msg)
+
+    def log_control_state_once(self, message):
+        if self.last_control_state_log == message:
+            return
+        self.last_control_state_log = message
+        self.get_logger().info(message)
 
     def position_msg_pub(self):
         msg = TrajectorySetpoint()
@@ -347,7 +363,7 @@ class OffboardControl(Node):
     def cmdloop_callback(self):
         self.publish_offboard_control_heartbeat_signal()
         if self.control_mode == 'm':
-            self.get_logger().info("manual control")
+            self.log_control_state_once("manual control")
             return
 
         if self.control_mode == 't':
@@ -358,13 +374,13 @@ class OffboardControl(Node):
                 self.arm()
             self.offboard_hover_des_set = False
             self.position_msg_pub()
-            self.get_logger().info("takeoff")
+            self.log_control_state_once("takeoff")
             return
 
         if self.control_mode == 'p':
             self.takeoff_hover_des_set = False
             self.hover_cmd_pub()
-            self.get_logger().info("position mode")
+            self.log_control_state_once("position mode")
             return
 
         if (self.control_mode == 'o' and not self.planning_pos_command_received):
@@ -372,11 +388,11 @@ class OffboardControl(Node):
             # self.enter_position_mode()
             self.takeoff_hover_des_set = False
             self.hover_cmd_pub()
-            self.get_logger().info("No command in offboard, hovermode")
+            self.log_control_state_once("No command in offboard, hover mode")
             return
 
         if (self.control_mode == 'o' and self.planning_pos_command_received):
-            self.get_logger().info("offboard control mode")
+            self.log_control_state_once("offboard control mode")
             if self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
                 # self.publish_offboard_control_heartbeat_signal()
                 self.engage_offboard_mode()
@@ -387,17 +403,22 @@ class OffboardControl(Node):
                         self.offboard_hover_des_set = False
                         self.takeoff_hover_des_set = False
                         self.ego_cmd_pub()
-                        self.get_logger().info("offboard velocity")
+                        if self.last_offboard_control_log != "offboard velocity":
+                            self.last_offboard_control_log = "offboard velocity"
+                            self.get_logger().info("offboard velocity mode")
                         return
                     else:
                         self.in_position_hold = True
                         # self.enter_position_mode()
                         self.hover_cmd_pub()
-                        self.get_logger().info("hovermode in offboard")
+                        if self.last_offboard_control_log != "hover mode in offboard":
+                            self.last_offboard_control_log = "hover mode in offboard"
+                            self.get_logger().info("hover mode in offboard")
                         return
         
         if self.control_mode == 'l':
             self.land()
+            self.log_control_state_once("land mode")
             return
         
         if self.control_mode == 'd':
