@@ -18,7 +18,7 @@ ros2 run px4_ego_py ds5_mode_teleop
 - Triangle: publish `p` for "hover at current position (position mode)"
 - Circle: publish `o` for "switch to offboard mode"
 - Cross: publish `l` for "land"
-- Left stick: XY translation in offboard
+- Left stick: XY translation in offboard (body frame)
 - Right stick vertical: Z translation in offboard
 - Right stick horizontal: yaw control in offboard
 

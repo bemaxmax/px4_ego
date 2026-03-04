@@ -105,8 +105,8 @@ class DS5Teleop(Node):
         self.previous_buttons = []
         self.current_position = None
         self.current_yaw = 0.0
-        self.target_vel_x = 0.0
-        self.target_vel_y = 0.0
+        self.target_forward_vel = 0.0
+        self.target_left_vel = 0.0
         self.target_vel_z = 0.0
         self.target_yaw_rate = 0.0
         self.last_joy_msg_time = None
@@ -116,7 +116,7 @@ class DS5Teleop(Node):
 
         self.get_logger().info(
             'DS5 teleop ready. Default mapping assumes joy/game_controller_node for /joy '
-            '(LX=0, LY=1, RX=2, RY=3).'
+            '(LX=0, LY=1, RX=2, RY=3). Planar translation is body-frame.'
         )
 
     def quaternion_to_yaw(self, w, x, y, z):
@@ -152,11 +152,11 @@ class DS5Teleop(Node):
 
     def joy_callback(self, msg):
         self.last_joy_msg_time = self.get_clock().now()
-        self.target_vel_x = (
-            -self.left_x_sign * self.read_axis(msg.axes, self.left_x_axis) * self.max_xy_speed
-        )
-        self.target_vel_y = (
+        self.target_forward_vel = (
             self.left_y_sign * self.read_axis(msg.axes, self.left_y_axis) * self.max_xy_speed
+        )
+        self.target_left_vel = (
+            self.left_x_sign * self.read_axis(msg.axes, self.left_x_axis) * self.max_xy_speed
         )
         self.target_vel_z = (
             self.right_y_sign * self.read_axis(msg.axes, self.right_y_axis) * self.max_z_speed
@@ -230,17 +230,29 @@ class DS5Teleop(Node):
 
     def build_target_from_current_pose(self):
         if self.current_position is None:
-            return None, None
+            return None
+
+        target_vel_x, target_vel_y = self.body_to_world_planar_velocity(
+            self.target_forward_vel,
+            self.target_left_vel,
+        )
 
         target_position = [
-            self.current_position[0] + self.target_vel_x * self.position_lookahead_sec,
-            self.current_position[1] + self.target_vel_y * self.position_lookahead_sec,
+            self.current_position[0] + target_vel_x * self.position_lookahead_sec,
+            self.current_position[1] + target_vel_y * self.position_lookahead_sec,
             self.current_position[2] + self.target_vel_z * self.position_lookahead_sec,
         ]
         target_yaw = self.wrap_angle(
             self.current_yaw + self.target_yaw_rate * self.yaw_lookahead_sec
         )
-        return target_position, target_yaw
+        return target_position, target_yaw, target_vel_x, target_vel_y
+
+    def body_to_world_planar_velocity(self, forward_velocity, left_velocity):
+        cos_yaw = math.cos(self.current_yaw)
+        sin_yaw = math.sin(self.current_yaw)
+        world_x = forward_velocity * cos_yaw - left_velocity * sin_yaw
+        world_y = forward_velocity * sin_yaw + left_velocity * cos_yaw
+        return world_x, world_y
 
     def publish_mode_command(self, mode_key):
         msg = String()
@@ -249,9 +261,10 @@ class DS5Teleop(Node):
         self.get_logger().info(f'Published mode command: {mode_key}')
 
     def publish_current_command(self):
-        target_position, target_yaw = self.build_target_from_current_pose()
-        if target_position is None:
+        target = self.build_target_from_current_pose()
+        if target is None:
             return
+        target_position, target_yaw, target_vel_x, target_vel_y = target
 
         msg = PositionCommand()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -259,8 +272,8 @@ class DS5Teleop(Node):
         msg.position.x = target_position[0]
         msg.position.y = target_position[1]
         msg.position.z = target_position[2]
-        msg.velocity.x = self.target_vel_x
-        msg.velocity.y = self.target_vel_y
+        msg.velocity.x = target_vel_x
+        msg.velocity.y = target_vel_y
         msg.velocity.z = self.target_vel_z
         msg.acceleration.x = 0.0
         msg.acceleration.y = 0.0
