@@ -1,6 +1,15 @@
+from collections import defaultdict
+from glob import glob
+import os
+
 from setuptools import find_packages, setup
 
 package_name = 'px4_ego_py'
+
+launch_files_by_dir = defaultdict(list)
+for launch_file in glob('launch/**/*.launch.py', recursive=True):
+    install_dir = os.path.join('share', package_name, os.path.dirname(launch_file))
+    launch_files_by_dir[install_dir].append(launch_file)
 
 setup(
     name=package_name,
@@ -10,7 +19,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-    ],
+    ] + list(launch_files_by_dir.items()),
     install_requires=['setuptools', 'numpy'],
     zip_safe=True,
     maintainer='hdn',
