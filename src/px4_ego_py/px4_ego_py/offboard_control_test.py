@@ -39,14 +39,16 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDur
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleStatus, VehicleLocalPosition, VehicleCommand, VehicleOdometry
 from quadrotor_msgs.msg import PositionCommand
 from std_msgs.msg import String
+from rosgraph_msgs.msg import Clock
 import math
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
 
 
 class OffboardControl(Node):
 
     def __init__(self):
         super().__init__('ego_pos_command_publisher')
-
 
         qos_profile_pub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -61,12 +63,20 @@ class OffboardControl(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=1
         )
-        
+
+        self.tf_broadcaster = TransformBroadcaster(self)#发布 odom -> base_link 的 TF
+        self.latest_sim_time = None
+
         # self.status_sub_v0 = self.create_subscription(
         #     VehicleStatus,
         #     'fmu/out/vehicle_status',
         #     self.vehicle_status_callback,
         #     qos_profile_sub)
+        self.clock_sub = self.create_subscription(
+            Clock,
+            '/clock',
+            self.clock_callback,
+            qos_profile_sub)
         self.status_sub_v1 = self.create_subscription(
             VehicleStatus,
             'fmu/out/vehicle_status_v2',
@@ -128,6 +138,17 @@ class OffboardControl(Node):
             [0, 0, -1]
         ])
 
+    def clock_callback(self, msg):
+        self.latest_sim_time = msg.clock
+
+    def current_time_msg(self):
+        if self.latest_sim_time is not None:
+            return self.latest_sim_time
+        return self.get_clock().now().to_msg()
+
+    def current_time_us(self):
+        current_time = self.current_time_msg()
+        return current_time.sec * 1000000 + current_time.nanosec // 1000
 
     #从四元数提取航向角（yaw）
     def quaternion_to_yaw(self, w, x, y, z):
@@ -155,9 +176,35 @@ class OffboardControl(Node):
         self.vehicle_status = msg
 
     #订阅fmu/out/vehicle_local_position_v1话题
-    def vehicle_local_position_callback(self, vehicle_local_position):
-        self.vehicle_local_position = vehicle_local_position
+    def vehicle_local_position_callback(self, msg):
+        self.vehicle_local_position = msg
         self.vehicle_local_position_received = True
+
+        # 发布 odom -> base_link 的 TF
+        t = TransformStamped()
+        t.header.stamp = self.current_time_msg()
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'base_link'
+
+        # PX4 (NED 世界坐标) 到 ROS (ENU 世界坐标) 的位置转换
+        # NED: x=北(North), y=东(East),  z=下(Down)
+        # ENU: x=东(East),  y=北(North), z=上(Up)
+        t.transform.translation.x = msg.y
+        t.transform.translation.y = msg.x
+        t.transform.translation.z = -msg.z
+
+        # 将 PX4 的 heading (NED航向角) 转换为 ENU 坐标系下的四元数
+        # NED 的 0 度在正北，顺时针增加；ENU 的 0 度在正东，逆时针增加。
+        yaw_enu = (math.pi / 2.0) - msg.heading
+
+        # 简单的绕 Z 轴旋转的欧拉角转四元数公式 (roll=0, pitch=0)
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = math.sin(yaw_enu / 2.0)
+        t.transform.rotation.w = math.cos(yaw_enu / 2.0)
+
+        self.tf_broadcaster.sendTransform(t)
+
     #订阅/fmu/in/vehicle_visual_odometry话题
     def vehicle_visual_odom_callback(self, msg):
         self.vehicle_visual_odom = msg
@@ -182,7 +229,7 @@ class OffboardControl(Node):
         msg.acceleration = False
         msg.attitude = False
         msg.body_rate = False
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        msg.timestamp = self.current_time_us()
         self.publisher_offboard_mode.publish(msg)
 
     def engage_offboard_mode(self):
@@ -234,7 +281,7 @@ class OffboardControl(Node):
         msg.source_system = 1
         msg.source_component = 1
         msg.from_external = True
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        msg.timestamp = self.current_time_us()
         self.publisher_vehicle_command.publish(msg)
 
     def log_control_state_once(self, message):
@@ -268,7 +315,7 @@ class OffboardControl(Node):
             if self.takeoff_hover_des_set:
                 msg.position = self.hover_setpoint.position
                 msg.yaw = self.hover_setpoint.yaw
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        msg.timestamp = self.current_time_us()
         self.publisher_trajectory.publish(msg)
     
     # VehicleLocalPosition /fmu/out/vehicle_local_position_v1 for simulation
@@ -296,12 +343,12 @@ class OffboardControl(Node):
             if self.offboard_hover_des_set:
                 msg.position = self.hover_setpoint.position
                 msg.yaw = self.hover_setpoint.yaw
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        msg.timestamp = self.current_time_us()
         self.publisher_trajectory.publish(msg)
     
     def ego_cmd_pub(self):
         msg = TrajectorySetpoint()
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        msg.timestamp = self.current_time_us()
         planning_position = np.array([self.latest_planning_msg.position.x, 
                                     self.latest_planning_msg.position.y, 
                                     self.latest_planning_msg.position.z])
@@ -324,7 +371,7 @@ class OffboardControl(Node):
     
     def ego_vel_cmd_pub(self):
         msg = TrajectorySetpoint()
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        msg.timestamp = self.current_time_us()
         planning_position = np.array([self.latest_planning_msg.position.x, 
                                     self.latest_planning_msg.position.y, 
                                     self.latest_planning_msg.position.z])

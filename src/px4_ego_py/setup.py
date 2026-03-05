@@ -19,7 +19,31 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-    ] + list(launch_files_by_dir.items()),
+        (
+            'share/' + package_name + '/config',
+            [
+                'config/ros_gz_bridge_depth.yaml',
+                'config/ros_gz_bridge_lidar.yaml',
+                'config/ros_gz_bridge_lidar_depth.yaml',
+                'config/nav2_params.yaml',
+            ],
+        ),
+        (
+            'share/' + package_name + '/urdf',
+            ['urdf/px4_frame_links.urdf'],
+        ),
+        (
+            'share/' + package_name + '/launch',
+            ['launch/nav2.launch.py'],
+        ),
+        (
+            'share/' + package_name + '/map',
+            [
+                'map/room.yaml',
+                'map/room.pgm',
+            ],
+        )
+    ],
     install_requires=['setuptools', 'numpy'],
     zip_safe=True,
     maintainer='hdn',
@@ -35,6 +59,7 @@ setup(
         'console_scripts': [
             "offboard_control_test = px4_ego_py.offboard_control_test:main",
             "ds5_mode_teleop = px4_ego_py.ds5_mode_teleop:main",
+            "cmd_vel_to_pos_cmd = px4_ego_py.cmd_vel_to_pos_cmd:main",
         ],
     },
 )
