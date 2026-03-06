@@ -1,54 +1,24 @@
-#!/usr/bin/env python3
-############################################################################
-#
-#   Copyright (C) 2022 PX4 Development Team. All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-#
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in
-#    the documentation and/or other materials provided with the
-#    distribution.
-# 3. Neither the name PX4 nor the names of its contributors may be
-#    used to endorse or promote products derived from this software
-#    without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-# COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
-# OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-# AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.
-#
-############################################################################
+import math
+import time
 
-import rclpy
 import numpy as np
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+import rclpy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleStatus, VehicleLocalPosition, VehicleCommand, VehicleOdometry
 from quadrotor_msgs.msg import PositionCommand
-from std_msgs.msg import String
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from rosgraph_msgs.msg import Clock
-import math
-from tf2_ros import TransformBroadcaster
-from geometry_msgs.msg import TransformStamped
+from std_msgs.msg import String
 
 
 class OffboardControl(Node):
 
     def __init__(self):
         super().__init__('ego_pos_command_publisher')
+        self.planning_pos_cmd_timeout_sec = max(
+            float(self.declare_parameter('planning_pos_cmd_timeout_sec', 0.5).value),
+            0.0,
+        )
 
         qos_profile_pub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -64,7 +34,6 @@ class OffboardControl(Node):
             depth=1
         )
 
-        self.tf_broadcaster = TransformBroadcaster(self)#发布 odom -> base_link 的 TF
         self.latest_sim_time = None
 
         # self.status_sub_v0 = self.create_subscription(
@@ -120,7 +89,7 @@ class OffboardControl(Node):
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
         self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
         
-        self.planning_pos_command_received = False
+        self.pos_cmd_received = False
         self.takeoff_hover_des_set = False
         self.offboard_hover_des_set = False
         self.hover_setpoint = TrajectorySetpoint()
@@ -128,6 +97,7 @@ class OffboardControl(Node):
         # which would result in large discontinuities in setpoints
         self.theta = 0.0
         self.latest_planning_msg = None
+        self.last_planning_msg_time = None
         self.last_control_state_log = None
         self.last_offboard_control_log = None
         self.last_arm_state = None
@@ -180,31 +150,6 @@ class OffboardControl(Node):
         self.vehicle_local_position = msg
         self.vehicle_local_position_received = True
 
-        # 发布 odom -> base_link 的 TF
-        t = TransformStamped()
-        t.header.stamp = self.current_time_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_link'
-
-        # PX4 (NED 世界坐标) 到 ROS (ENU 世界坐标) 的位置转换
-        # NED: x=北(North), y=东(East),  z=下(Down)
-        # ENU: x=东(East),  y=北(North), z=上(Up)
-        t.transform.translation.x = msg.y
-        t.transform.translation.y = msg.x
-        t.transform.translation.z = -msg.z
-
-        # 将 PX4 的 heading (NED航向角) 转换为 ENU 坐标系下的四元数
-        # NED 的 0 度在正北，顺时针增加；ENU 的 0 度在正东，逆时针增加。
-        yaw_enu = (math.pi / 2.0) - msg.heading
-
-        # 简单的绕 Z 轴旋转的欧拉角转四元数公式 (roll=0, pitch=0)
-        t.transform.rotation.x = 0.0
-        t.transform.rotation.y = 0.0
-        t.transform.rotation.z = math.sin(yaw_enu / 2.0)
-        t.transform.rotation.w = math.cos(yaw_enu / 2.0)
-
-        self.tf_broadcaster.sendTransform(t)
-
     #订阅/fmu/in/vehicle_visual_odometry话题
     def vehicle_visual_odom_callback(self, msg):
         self.vehicle_visual_odom = msg
@@ -212,10 +157,9 @@ class OffboardControl(Node):
         
     #订阅/drone_0_planning/pos_cmd话题
     def planning_pos_cmd_callback(self, msg):
-        if not self.planning_pos_command_received:
-            self.get_logger().info(f"Received first planning position command")
         self.latest_planning_msg = msg
-        self.planning_pos_command_received = True
+        self.pos_cmd_received = True
+        self.last_planning_msg_time = time.monotonic()
     
     #订阅/mode_key话题
     def mode_cmd_callback(self, msg):
@@ -290,6 +234,23 @@ class OffboardControl(Node):
         self.last_control_state_log = message
         self.get_logger().info(message)
 
+    def planning_pos_cmd_is_fresh(self):
+        if not self.pos_cmd_received or self.last_planning_msg_time is None:
+            return False
+        if self.planning_pos_cmd_timeout_sec <= 0.0:
+            return True
+        return (
+            time.monotonic() - self.last_planning_msg_time
+        ) <= self.planning_pos_cmd_timeout_sec
+
+    def invalidate_stale_planning_command(self):
+        if self.planning_pos_cmd_is_fresh() or not self.pos_cmd_received:
+            return
+
+        self.latest_planning_msg = None
+        self.pos_cmd_received = False
+        self.get_logger().info("planning pos_cmd timed out")
+
     def position_msg_pub(self):
         msg = TrajectorySetpoint()
         #判断为仿真环境还是实际环境，并根据接收到的位置信息生成起飞悬停的设定点，发布给PX4进行控制
@@ -321,6 +282,9 @@ class OffboardControl(Node):
     # VehicleLocalPosition /fmu/out/vehicle_local_position_v1 for simulation
     # VehicleOdometry /fmu/in/vehicle_visual_odometry for real experiment
     def hover_cmd_pub(self):
+        if self.last_offboard_control_log != "hover mode in offboard":
+            self.last_offboard_control_log = "hover mode in offboard"
+            self.get_logger().info("hover mode in offboard")
         msg = TrajectorySetpoint()
         if (self.vehicle_local_position_received and not self.vehicle_visual_odom_received):
             if not self.offboard_hover_des_set:
@@ -347,6 +311,9 @@ class OffboardControl(Node):
         self.publisher_trajectory.publish(msg)
     
     def ego_cmd_pub(self):
+        if self.last_offboard_control_log != "offboard velocity":
+            self.last_offboard_control_log = "offboard velocity"
+            self.get_logger().info("flying in offboard mode")
         msg = TrajectorySetpoint()
         msg.timestamp = self.current_time_us()
         planning_position = np.array([self.latest_planning_msg.position.x, 
@@ -369,43 +336,7 @@ class OffboardControl(Node):
         # msg.yaw = np.arccos(np.sin(self.latest_planning_msg.yaw))
         self.publisher_trajectory.publish(msg)
     
-    def ego_vel_cmd_pub(self):
-        msg = TrajectorySetpoint()
-        msg.timestamp = self.current_time_us()
-        planning_position = np.array([self.latest_planning_msg.position.x, 
-                                    self.latest_planning_msg.position.y, 
-                                    self.latest_planning_msg.position.z])
-        planning_velocity = np.array([self.latest_planning_msg.velocity.x,
-                                    self.latest_planning_msg.velocity.y,
-                                    self.latest_planning_msg.velocity.z])
-        inv_ros_to_fmu = np.linalg.inv(self.ros_to_fmu)
-        planning_position = inv_ros_to_fmu @ planning_position
-        planning_velocity = inv_ros_to_fmu @ planning_velocity
-        # msg.position[0] = planning_position[0]
-        # msg.position[1] = planning_position[1]
-        # msg.position[2] = planning_position[2]
-        # msg.velocity[0] = planning_velocity[0]
-        # msg.velocity[1] = planning_velocity[1]
-        # msg.velocity[2] = planning_velocity[2]
-        current_position = np.array([0.0, 0.0, 0.0])
-        if (self.vehicle_local_position_received and not self.vehicle_visual_odom_received):
-            current_position[0] = self.vehicle_local_position.x
-            current_position[1] = self.vehicle_local_position.y
-            current_position[2] = self.vehicle_local_position.z
-        elif (self.vehicle_visual_odom_received):
-            current_position[0] = self.vehicle_visual_odom.position[0]
-            current_position[1] = self.vehicle_visual_odom.position[1]
-            current_position[2] = self.vehicle_visual_odom.position[2]
-        msg.position[0] = float('nan')
-        msg.position[1] = float('nan')
-        msg.position[2] = float('nan')
-        msg.velocity[0] = 0.98* (planning_position[0] - current_position[0]) + planning_velocity[0]
-        msg.velocity[1] = 0.98* (planning_position[1] - current_position[1]) + planning_velocity[1]
-        msg.velocity[2] = 1.00* (planning_position[2] - current_position[2]) + planning_velocity[2]
-        yaw_enu = self.latest_planning_msg.yaw
-        msg.yaw = np.arctan2(np.cos(yaw_enu),np.sin(yaw_enu))
-        # msg.yaw = np.arccos(np.sin(self.latest_planning_msg.yaw))
-        self.publisher_trajectory.publish(msg)
+
 
     def cmdloop_callback(self):
         self.publish_offboard_control_heartbeat_signal()
@@ -430,15 +361,15 @@ class OffboardControl(Node):
             self.log_control_state_once("position mode")
             return
 
-        if (self.control_mode == 'o' and not self.planning_pos_command_received):
+        if (self.control_mode == 'o' and not self.pos_cmd_received):
             self.in_position_hold = True
             # self.enter_position_mode()
             self.takeoff_hover_des_set = False
             self.hover_cmd_pub()
-            self.log_control_state_once("No command in offboard, hover mode")
             return
 
-        if (self.control_mode == 'o' and self.planning_pos_command_received):
+        if (self.control_mode == 'o' and self.pos_cmd_received):
+            self.invalidate_stale_planning_command()
             self.log_control_state_once("offboard control mode")
             if self.nav_state != VehicleStatus.NAVIGATION_STATE_OFFBOARD:
                 # self.publish_offboard_control_heartbeat_signal()
@@ -450,19 +381,9 @@ class OffboardControl(Node):
                         self.offboard_hover_des_set = False
                         self.takeoff_hover_des_set = False
                         self.ego_cmd_pub()
-                        if self.last_offboard_control_log != "offboard velocity":
-                            self.last_offboard_control_log = "offboard velocity"
-                            self.get_logger().info("offboard velocity mode")
-                        return
-                    else:
-                        self.in_position_hold = True
-                        # self.enter_position_mode()
-                        self.hover_cmd_pub()
-                        if self.last_offboard_control_log != "hover mode in offboard":
-                            self.last_offboard_control_log = "hover mode in offboard"
-                            self.get_logger().info("hover mode in offboard")
-                        return
-        
+            return
+                        
+
         if self.control_mode == 'l':
             self.land()
             self.log_control_state_once("land mode")
@@ -486,3 +407,42 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+
+    # def ego_vel_cmd_pub(self):
+    #     msg = TrajectorySetpoint()
+    #     msg.timestamp = self.current_time_us()
+    #     planning_position = np.array([self.latest_planning_msg.position.x, 
+    #                                 self.latest_planning_msg.position.y, 
+    #                                 self.latest_planning_msg.position.z])
+    #     planning_velocity = np.array([self.latest_planning_msg.velocity.x,
+    #                                 self.latest_planning_msg.velocity.y,
+    #                                 self.latest_planning_msg.velocity.z])
+    #     inv_ros_to_fmu = np.linalg.inv(self.ros_to_fmu)
+    #     planning_position = inv_ros_to_fmu @ planning_position
+    #     planning_velocity = inv_ros_to_fmu @ planning_velocity
+    #     # msg.position[0] = planning_position[0]
+    #     # msg.position[1] = planning_position[1]
+    #     # msg.position[2] = planning_position[2]
+    #     # msg.velocity[0] = planning_velocity[0]
+    #     # msg.velocity[1] = planning_velocity[1]
+    #     # msg.velocity[2] = planning_velocity[2]
+    #     current_position = np.array([0.0, 0.0, 0.0])
+    #     if (self.vehicle_local_position_received and not self.vehicle_visual_odom_received):
+    #         current_position[0] = self.vehicle_local_position.x
+    #         current_position[1] = self.vehicle_local_position.y
+    #         current_position[2] = self.vehicle_local_position.z
+    #     elif (self.vehicle_visual_odom_received):
+    #         current_position[0] = self.vehicle_visual_odom.position[0]
+    #         current_position[1] = self.vehicle_visual_odom.position[1]
+    #         current_position[2] = self.vehicle_visual_odom.position[2]
+    #     msg.position[0] = float('nan')
+    #     msg.position[1] = float('nan')
+    #     msg.position[2] = float('nan')
+    #     msg.velocity[0] = 0.98* (planning_position[0] - current_position[0]) + planning_velocity[0]
+    #     msg.velocity[1] = 0.98* (planning_position[1] - current_position[1]) + planning_velocity[1]
+    #     msg.velocity[2] = 1.00* (planning_position[2] - current_position[2]) + planning_velocity[2]
+    #     yaw_enu = self.latest_planning_msg.yaw
+    #     msg.yaw = np.arctan2(np.cos(yaw_enu),np.sin(yaw_enu))
+    #     # msg.yaw = np.arccos(np.sin(self.latest_planning_msg.yaw))
+    #     self.publisher_trajectory.publish(msg)

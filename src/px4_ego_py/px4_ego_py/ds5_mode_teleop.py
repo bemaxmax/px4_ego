@@ -22,61 +22,30 @@ class DS5Teleop(Node):
     def __init__(self):
         super().__init__('ds5_mode_teleop')
 
-        self.declare_parameter('joy_topic', '/joy')
-        self.declare_parameter('update_rate_hz', 50.0)
-        self.declare_parameter('deadzone', 0.05)
-        self.declare_parameter('max_xy_speed', 0.80)
-        self.declare_parameter('max_z_speed', 0.50)
-        self.declare_parameter('max_yaw_rate', 0.80)
-        self.declare_parameter('position_lookahead_sec', 0.50)
-        self.declare_parameter('yaw_lookahead_sec', 0.35)
-        self.declare_parameter('joy_timeout_sec', 0.50)
+        self.joy_topic = self.declare_parameter('joy_topic', '/joy').value
+        self.update_rate_hz = self.declare_float_param('update_rate_hz', 50.0, minimum=1.0)
+        self.max_xy_speed = self.declare_float_param('max_xy_speed', 0.80, absolute=True)
+        self.max_z_speed = self.declare_float_param('max_z_speed', 0.50, absolute=True)
+        self.max_yaw_rate = self.declare_float_param('max_yaw_rate', 0.80, absolute=True)
+        self.position_lookahead_sec = self.declare_float_param('position_lookahead_sec',0.50,minimum=0.0,)
+        self.yaw_lookahead_sec = self.declare_float_param('yaw_lookahead_sec',0.35,minimum=0.0,)
+        self.joy_timeout_sec = self.declare_float_param('joy_timeout_sec',0.50,minimum=0.0,)
 
-        # The default indexes match joy/game_controller_node.
-        self.declare_parameter('left_x_axis', 0)
-        self.declare_parameter('left_y_axis', 1)
-        self.declare_parameter('right_x_axis', 2)
-        self.declare_parameter('right_y_axis', 3)
-        self.declare_parameter('left_x_sign', 1.0)
-        self.declare_parameter('left_y_sign', 1.0)
-        self.declare_parameter('right_x_sign', 1.0)
-        self.declare_parameter('right_y_sign', 1.0)
-        self.declare_parameter('square_button', 2)
-        self.declare_parameter('circle_button', 1)
-        self.declare_parameter('cross_button', 0)
-        self.declare_parameter('triangle_button', 3)
+        self.left_x_axis = self.declare_int_param('left_x_axis', 0)
+        self.left_y_axis = self.declare_int_param('left_y_axis', 1)
+        self.right_x_axis = self.declare_int_param('right_x_axis', 2)
+        self.right_y_axis = self.declare_int_param('right_y_axis', 3)
+        self.left_x_sign = self.declare_float_param('left_x_sign', 1.0)
+        self.left_y_sign = self.declare_float_param('left_y_sign', 1.0)
+        self.right_x_sign = self.declare_float_param('right_x_sign', 1.0)
+        self.right_y_sign = self.declare_float_param('right_y_sign', 1.0)
 
-        self.joy_topic = self.get_parameter('joy_topic').value
-        self.update_rate_hz = max(float(self.get_parameter('update_rate_hz').value), 1.0)
-        self.deadzone = abs(float(self.get_parameter('deadzone').value))
-        self.max_xy_speed = abs(float(self.get_parameter('max_xy_speed').value))
-        self.max_z_speed = abs(float(self.get_parameter('max_z_speed').value))
-        self.max_yaw_rate = abs(float(self.get_parameter('max_yaw_rate').value))
-        self.position_lookahead_sec = max(
-            float(self.get_parameter('position_lookahead_sec').value),
-            0.0,
+        self.mode_buttons = (
+            (self.declare_int_param('square_button', 2), 't', False),
+            (self.declare_int_param('circle_button', 1), 'o', True),
+            (self.declare_int_param('cross_button', 0), 'l', False),
+            (self.declare_int_param('triangle_button', 3), 'p', False),
         )
-        self.yaw_lookahead_sec = max(
-            float(self.get_parameter('yaw_lookahead_sec').value),
-            0.0,
-        )
-        self.joy_timeout_sec = max(
-            float(self.get_parameter('joy_timeout_sec').value),
-            0.0,
-        )
-
-        self.left_x_axis = int(self.get_parameter('left_x_axis').value)
-        self.left_y_axis = int(self.get_parameter('left_y_axis').value)
-        self.right_x_axis = int(self.get_parameter('right_x_axis').value)
-        self.right_y_axis = int(self.get_parameter('right_y_axis').value)
-        self.left_x_sign = float(self.get_parameter('left_x_sign').value)
-        self.left_y_sign = float(self.get_parameter('left_y_sign').value)
-        self.right_x_sign = float(self.get_parameter('right_x_sign').value)
-        self.right_y_sign = float(self.get_parameter('right_y_sign').value)
-        self.square_button = int(self.get_parameter('square_button').value)
-        self.circle_button = int(self.get_parameter('circle_button').value)
-        self.cross_button = int(self.get_parameter('cross_button').value)
-        self.triangle_button = int(self.get_parameter('triangle_button').value)
 
         qos_profile_sub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -109,7 +78,7 @@ class DS5Teleop(Node):
         self.target_left_vel = 0.0
         self.target_vel_z = 0.0
         self.target_yaw_rate = 0.0
-        self.last_joy_msg_time = None
+        self.last_active_input_time = None
 
         timer_period = 1.0 / self.update_rate_hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
@@ -118,6 +87,17 @@ class DS5Teleop(Node):
             'DS5 teleop ready. Default mapping assumes joy/game_controller_node for /joy '
             '(LX=0, LY=1, RX=2, RY=3). Planar translation is body-frame.'
         )
+
+    def declare_float_param(self, name, default, minimum=None, absolute=False):
+        value = float(self.declare_parameter(name, default).value)
+        if absolute:
+            value = abs(value)
+        if minimum is not None:
+            value = max(value, minimum)
+        return value
+
+    def declare_int_param(self, name, default):
+        return int(self.declare_parameter(name, default).value)
 
     def quaternion_to_yaw(self, w, x, y, z):
         siny_cosp = 2.0 * (w * z + x * y)
@@ -129,29 +109,29 @@ class DS5Teleop(Node):
         return math.atan2(math.cos(yaw_value), math.sin(yaw_value))
 
     def vehicle_local_position_callback(self, msg):
-        self.update_current_pose(
-            ros_x=msg.y,
-            ros_y=msg.x,
-            ros_z=-msg.z,
-            ros_yaw=self.convert_yaw_between_fmu_and_ros(msg.heading),
+        self.set_pose(
+            x=msg.y,
+            y=msg.x,
+            z=-msg.z,
+            yaw=self.convert_yaw_between_fmu_and_ros(msg.heading),
         )
 
     def vehicle_visual_odom_callback(self, msg):
-        q_att = msg.q
-        yaw_ned = self.quaternion_to_yaw(q_att[0], q_att[1], q_att[2], q_att[3])
-        self.update_current_pose(
-            ros_x=msg.position[1],
-            ros_y=msg.position[0],
-            ros_z=-msg.position[2],
-            ros_yaw=self.convert_yaw_between_fmu_and_ros(yaw_ned),
+        yaw_ned = self.quaternion_to_yaw(*msg.q)
+        self.set_pose(
+            x=msg.position[1],
+            y=msg.position[0],
+            z=-msg.position[2],
+            yaw=self.convert_yaw_between_fmu_and_ros(yaw_ned),
         )
 
-    def update_current_pose(self, ros_x, ros_y, ros_z, ros_yaw):
-        self.current_position = [float(ros_x), float(ros_y), float(ros_z)]
-        self.current_yaw = float(ros_yaw)
+    def set_pose(self, x, y, z, yaw):
+        self.current_position = (float(x), float(y), float(z))
+        self.current_yaw = float(yaw)
 
     def joy_callback(self, msg):
-        self.last_joy_msg_time = self.get_clock().now()
+        if self.has_active_input(msg):
+            self.last_active_input_time = self.get_clock().now()
         self.target_forward_vel = (
             self.left_y_sign * self.read_axis(msg.axes, self.left_y_axis) * self.max_xy_speed
         )
@@ -166,25 +146,17 @@ class DS5Teleop(Node):
         )
 
         buttons = list(msg.buttons)
-
-        if not self.previous_buttons or len(self.previous_buttons) != len(buttons):
+        if len(self.previous_buttons) != len(buttons):
             self.previous_buttons = [0] * len(buttons)
 
-        self.handle_button_press(buttons, self.square_button, 't', prime_setpoint=False)
-        self.handle_button_press(buttons, self.circle_button, 'o', prime_setpoint=True)
-        self.handle_button_press(buttons, self.cross_button, 'l', prime_setpoint=False)
-        self.handle_button_press(buttons, self.triangle_button, 'p', prime_setpoint=False)
+        for button_index, mode_key, prime_setpoint in self.mode_buttons:
+            if not self.is_button_rising(buttons, button_index):
+                continue
+            if prime_setpoint:
+                self.publish_current_command()
+            self.publish_mode_command(mode_key)
 
         self.previous_buttons = buttons
-
-    def handle_button_press(self, buttons, button_index, mode_key, prime_setpoint):
-        if not self.is_button_rising(buttons, button_index):
-            return
-
-        if prime_setpoint:
-            self.publish_current_command()
-
-        self.publish_mode_command(mode_key)
 
     def is_button_rising(self, buttons, button_index):
         if button_index < 0 or button_index >= len(buttons):
@@ -195,64 +167,35 @@ class DS5Teleop(Node):
         return current_pressed and not previous_pressed
 
     def timer_callback(self):
-        if self.current_position is None:
-            return
-        if not self.has_recent_joy_message():
+        if self.current_position is None or not self.has_recent_active_input():
             return
 
         self.publish_current_command()
-
-    def apply_deadzone(self, value):
-        if abs(value) < self.deadzone:
-            return 0.0
-        return value
 
     def read_axis(self, axes, axis_index):
         if axis_index < 0 or axis_index >= len(axes):
             return 0.0
 
-        value = float(axes[axis_index])
-        return self.apply_deadzone(value)
+        return float(axes[axis_index])
 
     def wrap_angle(self, angle):
         return math.atan2(math.sin(angle), math.cos(angle))
 
-    def has_recent_joy_message(self):
-        if self.last_joy_msg_time is None:
+    def has_active_input(self, msg):
+        if any(button != 0 for button in msg.buttons):
+            return True
+        return any(axis != 0.0 for axis in msg.axes)
+
+    def has_recent_active_input(self):
+        if self.last_active_input_time is None:
             return False
         if self.joy_timeout_sec <= 0.0:
             return True
 
         age_sec = (
-            self.get_clock().now().nanoseconds - self.last_joy_msg_time.nanoseconds
+            self.get_clock().now().nanoseconds - self.last_active_input_time.nanoseconds
         ) / 1e9
         return age_sec <= self.joy_timeout_sec
-
-    def build_target_from_current_pose(self):
-        if self.current_position is None:
-            return None
-
-        target_vel_x, target_vel_y = self.body_to_world_planar_velocity(
-            self.target_forward_vel,
-            self.target_left_vel,
-        )
-
-        target_position = [
-            self.current_position[0] + target_vel_x * self.position_lookahead_sec,
-            self.current_position[1] + target_vel_y * self.position_lookahead_sec,
-            self.current_position[2] + self.target_vel_z * self.position_lookahead_sec,
-        ]
-        target_yaw = self.wrap_angle(
-            self.current_yaw + self.target_yaw_rate * self.yaw_lookahead_sec
-        )
-        return target_position, target_yaw, target_vel_x, target_vel_y
-
-    def body_to_world_planar_velocity(self, forward_velocity, left_velocity):
-        cos_yaw = math.cos(self.current_yaw)
-        sin_yaw = math.sin(self.current_yaw)
-        world_x = forward_velocity * cos_yaw - left_velocity * sin_yaw
-        world_y = forward_velocity * sin_yaw + left_velocity * cos_yaw
-        return world_x, world_y
 
     def publish_mode_command(self, mode_key):
         msg = String()
@@ -261,17 +204,24 @@ class DS5Teleop(Node):
         self.get_logger().info(f'Published mode command: {mode_key}')
 
     def publish_current_command(self):
-        target = self.build_target_from_current_pose()
-        if target is None:
+        if self.current_position is None:
             return
-        target_position, target_yaw, target_vel_x, target_vel_y = target
+
+        current_x, current_y, current_z = self.current_position
+        cos_yaw = math.cos(self.current_yaw)
+        sin_yaw = math.sin(self.current_yaw)
+        target_vel_x = self.target_forward_vel * cos_yaw - self.target_left_vel * sin_yaw
+        target_vel_y = self.target_forward_vel * sin_yaw + self.target_left_vel * cos_yaw
+        target_yaw = self.wrap_angle(
+            self.current_yaw + self.target_yaw_rate * self.yaw_lookahead_sec
+        )
 
         msg = PositionCommand()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'map'
-        msg.position.x = target_position[0]
-        msg.position.y = target_position[1]
-        msg.position.z = target_position[2]
+        msg.position.x = current_x + target_vel_x * self.position_lookahead_sec
+        msg.position.y = current_y + target_vel_y * self.position_lookahead_sec
+        msg.position.z = current_z + self.target_vel_z * self.position_lookahead_sec
         msg.velocity.x = target_vel_x
         msg.velocity.y = target_vel_y
         msg.velocity.z = self.target_vel_z
