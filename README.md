@@ -36,6 +36,92 @@ ros2 launch px4_ego_py ds5_mode_teleop.launch.py
 ros2 launch px4_ego_py ds5_mode_teleop.launch.py device_id:=0 autorepeat_rate:=50.0 joy_topic:=/joy
 ```
 
+## Nav2 启动指引
+
+`nav2.launch.py` 会同时启动以下内容：
+
+- `robot_state_publisher`：发布 `base_footprint -> base_link -> 传感器` 的静态 TF
+- `px4_odom_tf_publisher`：将 PX4 本地位姿转换为 `odom -> base_footprint`
+- `cmd_vel_to_pos_cmd`：将 Nav2 的 `/cmd_vel` 转为 `/drone_0_planning/pos_cmd`
+- `nav2_bringup`：启动 map server、AMCL、planner、controller 等导航模块
+- `rviz2`：打开 Nav2 默认 RViz 配置
+
+### 启动前准备
+
+- 保持 `offboard_control_test` 运行，它负责接收 `/drone_0_planning/pos_cmd` 并发送 PX4 控制指令。
+- 确认已经有可用的 `/scan`、`/tf`、`/map` 以及 PX4 位姿反馈。
+- 在实际飞行中，先手动起飞并稳定悬停，再让 Nav2 接管水平导航。
+
+### 推荐启动顺序
+
+终端 1：启动状态机主节点
+
+```bash
+cd px4_ego
+source install/setup.bash
+ros2 run px4_ego_py offboard_control_test
+```
+
+终端 2：启动手柄或键盘模式输入
+
+```bash
+ros2 launch px4_ego_py ds5_mode_teleop.launch.py
+```
+
+或：
+
+```bash
+python3 mode_key.py
+```
+
+终端 3：启动 Nav2
+
+仿真环境下（有 `/clock`）：
+
+```bash
+ros2 launch px4_ego_py nav2.launch.py
+```
+
+真实环境或没有 `/clock` 时：
+
+```bash
+ros2 launch px4_ego_py nav2.launch.py use_sim_time:=false
+```
+
+可选参数示例：
+
+```bash
+ros2 launch px4_ego_py nav2.launch.py \
+  use_sim_time:=false \
+  map:=/absolute/path/to/map.yaml \
+  params_file:=/absolute/path/to/nav2_params.yaml
+```
+
+### RViz 中的使用流程
+
+1. 先确认固定坐标系为 `map`，并且能看到地图、激光和 TF。
+2. 点击 `2D Pose Estimate`，在地图上给出无人机初始位姿。
+3. 使用手柄或键盘先完成起飞，使无人机进入稳定悬停。
+4. 在 RViz 中点击 `Nav2 Goal` 发送目标点。
+5. 收到第一条 `/cmd_vel` 后，`cmd_vel_to_pos_cmd` 会自动发布一次 `o`，请求进入 offboard 控制。
+
+### 常用检查项
+
+如果 RViz 中无法正常定位或导航，优先检查：
+
+```bash
+ros2 topic echo /scan
+ros2 topic echo /fmu/out/vehicle_local_position_v1
+ros2 topic echo /drone_0_planning/pos_cmd
+ros2 topic echo /cmd_vel
+```
+
+如果要看 Nav2 launch 支持的参数：
+
+```bash
+ros2 launch px4_ego_py nav2.launch.py --show-args
+```
+
 ## DS5 按键与摇杆映射
 
 - Square：发布 `t`，触发 `takeoff`

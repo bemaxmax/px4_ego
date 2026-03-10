@@ -22,8 +22,6 @@ setup(
         (
             'share/' + package_name + '/config',
             [
-                'config/ros_gz_bridge_depth.yaml',
-                'config/ros_gz_bridge_lidar.yaml',
                 'config/ros_gz_bridge_lidar_depth.yaml',
                 'config/nav2_params.yaml',
             ],
@@ -37,6 +35,12 @@ setup(
             [
                 'launch/nav2.launch.py',
                 'launch/ds5_mode_teleop.launch.py',
+            ],
+        ),
+        (
+            'share/' + package_name + '/scripts',
+            [
+                'scripts/simulation-gazebo',
             ],
         ),
         (
@@ -62,8 +66,6 @@ setup(
         'console_scripts': [
             "offboard_control_test = px4_ego_py.offboard_control_test:main",
             "ds5_mode_teleop = px4_ego_py.ds5_mode_teleop:main",
-            "cmd_vel_to_pos_cmd = px4_ego_py.cmd_vel_to_pos_cmd:main",
-            "lidar_points_to_world = px4_ego_py.lidar_points_to_world:main",
         ],
     },
 )

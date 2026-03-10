@@ -67,9 +67,9 @@ class OffboardControl(Node):
 
         # 发布离线控制模式心跳信号
         self.publisher_offboard_mode = self.create_publisher(OffboardControlMode, 'fmu/in/offboard_control_mode', qos_profile_pub)
-        #发布目标点（正常）
+        #发布目标点
         self.publisher_trajectory = self.create_publisher(TrajectorySetpoint, 'fmu/in/trajectory_setpoint', qos_profile_pub)
-        #发布控制模式（不正常）
+        #发布控制模式
         self.publisher_vehicle_command = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile_pub)
 
         self.control_mode = 'm'#初始控制模式为manual（手动），通过订阅'/mode_key'话题接收控制模式切换命令

@@ -50,7 +50,7 @@ def generate_launch_description():
             }],
             output='screen'),
         launch_ros.actions.Node(
-            package='px4_ego_py',
+            package='px4_bridge_cpp',
             executable='cmd_vel_to_pos_cmd',
             name='cmd_vel_to_pos_cmd',
             parameters=[{'use_sim_time': use_sim_time}],

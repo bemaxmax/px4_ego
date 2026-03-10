@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import shlex
+import subprocess
+
+DEFAULT_WORLD = 'room'
+DEFAULT_MODEL_STORE = os.path.expanduser('~/.simulation-gazebo')
+
+
+def run(cmd):
+    return subprocess.Popen(['bash', '-c', cmd], cwd='.')
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Gazebo simulation')
+    parser.add_argument('--world', help='World to run in Gazebo', default=DEFAULT_WORLD)
+    args = parser.parse_args()
+
+    models_dir = os.path.join(DEFAULT_MODEL_STORE, 'models')
+    worlds_dir = os.path.join(DEFAULT_MODEL_STORE, 'worlds')
+    server_config = os.path.join(DEFAULT_MODEL_STORE, 'server.config')
+    world_path = os.path.join(worlds_dir, f'{args.world}.sdf')
+
+    missing_paths = [
+        path for path in (models_dir, worlds_dir, server_config, world_path)
+        if not os.path.exists(path)
+    ]
+    if missing_paths:
+        missing = '\n'.join(missing_paths)
+        raise SystemExit(
+            'Gazebo resources are missing. Expected the following paths to exist:\n'
+            f'{missing}'
+        )
+
+    print(f'> Launching gazebo simulation with world: {world_path}')
+    cmd = f'GZ_SIM_RESOURCE_PATH={shlex.quote(models_dir)} '
+    cmd += f'GZ_SIM_SERVER_CONFIG_PATH={shlex.quote(server_config)} '
+    cmd += f'gz sim -r {shlex.quote(world_path)}'
+
+    try:
+        run(cmd).wait()
+    except KeyboardInterrupt:
+        raise SystemExit(0)
+
+
+if __name__ == '__main__':
+    main()

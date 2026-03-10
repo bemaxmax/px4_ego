@@ -13,7 +13,6 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
-from std_msgs.msg import String
 
 
 class CmdVelToPosCmdBridge(Node):
@@ -24,19 +23,14 @@ class CmdVelToPosCmdBridge(Node):
 
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
         self.declare_parameter('pos_cmd_topic', '/drone_0_planning/pos_cmd')
-        self.declare_parameter('mode_topic', '/mode_key')
         self.declare_parameter('frame_id', 'map')
         self.declare_parameter('update_rate_hz', 50.0)
         self.declare_parameter('cmd_vel_timeout_sec', 0.5)
         self.declare_parameter('position_lookahead_sec', 0.50)
         self.declare_parameter('yaw_lookahead_sec', 0.35)
-        self.declare_parameter('cmd_vel_is_body_frame', True)
-        self.declare_parameter('auto_offboard_mode', True)
-        self.declare_parameter('publish_hover_on_timeout', True)
 
         self.cmd_vel_topic = str(self.get_parameter('cmd_vel_topic').value)
         self.pos_cmd_topic = str(self.get_parameter('pos_cmd_topic').value)
-        self.mode_topic = str(self.get_parameter('mode_topic').value)
         self.frame_id = str(self.get_parameter('frame_id').value)
         self.update_rate_hz = max(float(self.get_parameter('update_rate_hz').value), 1.0)
         self.cmd_vel_timeout_sec = max(float(self.get_parameter('cmd_vel_timeout_sec').value), 0.0)
@@ -45,9 +39,6 @@ class CmdVelToPosCmdBridge(Node):
             0.0,
         )
         self.yaw_lookahead_sec = max(float(self.get_parameter('yaw_lookahead_sec').value), 0.0)
-        self.cmd_vel_is_body_frame = bool(self.get_parameter('cmd_vel_is_body_frame').value)
-        self.auto_offboard_mode = bool(self.get_parameter('auto_offboard_mode').value)
-        self.publish_hover_on_timeout = bool(self.get_parameter('publish_hover_on_timeout').value)
 
         qos_profile_sub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -71,7 +62,6 @@ class CmdVelToPosCmdBridge(Node):
         )
 
         self.pos_cmd_pub = self.create_publisher(PositionCommand, self.pos_cmd_topic, 10)
-        self.mode_pub = self.create_publisher(String, self.mode_topic, 10)
 
         self.current_position = None
         self.current_yaw = 0.0
@@ -81,16 +71,13 @@ class CmdVelToPosCmdBridge(Node):
         self.latest_cmd_yaw_rate = 0.0
         self.last_cmd_vel_time = None
         self.pose_source = 'none'
-        self.mode_sent = False
         self.pose_wait_log_sent = False
-        self.timeout_state = False
 
         timer_period = 1.0 / self.update_rate_hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
         self.get_logger().info(
-            f'cmd_vel bridge ready: {self.cmd_vel_topic} -> {self.pos_cmd_topic}, '
-            f'body_frame={self.cmd_vel_is_body_frame}, auto_offboard={self.auto_offboard_mode}'
+            f'cmd_vel bridge ready: {self.cmd_vel_topic} -> {self.pos_cmd_topic}'
         )
 
     def quaternion_to_yaw(self, w, x, y, z):
@@ -138,16 +125,6 @@ class CmdVelToPosCmdBridge(Node):
         self.latest_cmd_yaw_rate = float(msg.angular.z)
         self.last_cmd_vel_time = self.get_clock().now()
 
-        if self.auto_offboard_mode and not self.mode_sent:
-            self.publish_mode_command('o')
-            self.mode_sent = True
-
-    def publish_mode_command(self, mode_key):
-        msg = String()
-        msg.data = mode_key
-        self.mode_pub.publish(msg)
-        self.get_logger().info(f'Published mode command: {mode_key}')
-
     def has_recent_cmd_vel(self):
         if self.last_cmd_vel_time is None:
             return False
@@ -194,35 +171,12 @@ class CmdVelToPosCmdBridge(Node):
 
         has_recent_cmd = self.has_recent_cmd_vel()
         if not has_recent_cmd:
-            if not self.timeout_state:
-                self.timeout_state = True
-                self.get_logger().warn(
-                    'cmd_vel timeout, publishing hover setpoint'
-                    if self.publish_hover_on_timeout
-                    else 'cmd_vel timeout, not publishing setpoint'
-                )
-            if not self.publish_hover_on_timeout:
-                return
-
-            target_position = self.current_position
-            target_velocity = [0.0, 0.0, 0.0]
-            target_yaw = self.current_yaw
-            target_yaw_rate = 0.0
-            self.publish_pos_cmd(target_position, target_velocity, target_yaw, target_yaw_rate)
             return
 
-        if self.timeout_state:
-            self.timeout_state = False
-            self.get_logger().info('cmd_vel stream recovered')
-
-        if self.cmd_vel_is_body_frame:
-            target_vel_x, target_vel_y = self.body_to_world_planar_velocity(
-                self.latest_cmd_linear_x,
-                self.latest_cmd_linear_y,
-            )
-        else:
-            target_vel_x = self.latest_cmd_linear_x
-            target_vel_y = self.latest_cmd_linear_y
+        target_vel_x, target_vel_y = self.body_to_world_planar_velocity(
+            self.latest_cmd_linear_x,
+            self.latest_cmd_linear_y,
+        )
 
         target_position = [
             self.current_position[0] + target_vel_x * self.position_lookahead_sec,
