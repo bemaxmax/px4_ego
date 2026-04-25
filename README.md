@@ -47,7 +47,7 @@ rosdep install --from-paths src --ignore-src -r -y
 检测、飞书和大模型相关 Python 依赖：
 
 ```bash
-python3 -m pip install --user ultralytics torch opencv-python openai lark-oapi reportlab websockets requests
+python3 -m pip install --user ultralytics torch opencv-python openai lark-oapi websockets requests
 ```
 
 Gazebo 资源目录需要存在：
@@ -189,22 +189,16 @@ ros2 launch llm_ros2_agent voice_command.launch.py
 - `voice_command`: 订阅 `/voice_text`，调用大模型解析中文指令
 - `feishu_bridge`: 飞书长连接消息桥，转发飞书文本到 `/voice_text`
 - `n8n_result_bridge`: 监听 `0.0.0.0:8000`，接收 n8n 二次识别结果
+- `report_generator`: 监听目标识别和任务完成信号，生成火灾救援辅助决策报告
 
 需要提前设置环境变量：
 
 ```bash
-export MINIMAX_API_KEY=...
 export QWEN_API_KEY=...
 export FEISHU_APP_ID=...
 export FEISHU_APP_SECRET=...
 export FEISHU_VERIFICATION_TOKEN=...
 export FEISHU_ENCRYPT_KEY=...
-```
-
-如果需要生成火灾救援辅助决策报告，另开终端运行：
-
-```bash
-ros2 run llm_ros2_agent report_generator
 ```
 
 报告输出到：

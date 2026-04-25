@@ -41,4 +41,10 @@ def generate_launch_description():
             name="n8n_result_bridge",
             output="screen",
         ),
+        Node(
+            package="llm_ros2_agent",
+            executable="report_generator",
+            name="report_generator",
+            output="screen",
+        ),
     ])

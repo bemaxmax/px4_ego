@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火灾辅助救援决策报告</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #d32f2f;
+            text-align: center;
+            border-bottom: 2px solid #d32f2f;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #1976d2;
+            border-left: 4px solid #1976d2;
+            padding-left: 10px;
+            margin-top: 30px;
+        }
+        .meta-info {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .meta-info p {
+            margin: 5px 0;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f8f8;
+        }
+        .risk-high {
+            color: white;
+            background-color: #d32f2f;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .risk-medium {
+            color: white;
+            background-color: #f57c00;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .risk-low {
+            color: white;
+            background-color: #4caf50;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .risk-none {
+            color: white;
+            background-color: #9e9e9e;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .action-item {
+            background-color: #fff8e1;
+            border-left: 4px solid #ffb300;
+            padding: 10px 15px;
+            margin-bottom: 10px;
+        }
+        .footer-note {
+            margin-top: 40px;
+            font-size: 0.9em;
+            color: #7f8c8d;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>火灾辅助救援决策报告</h1>
+
+    <div class="meta-info">
+        <p>报告生成时间：<span id="gen-time">2026年04月25日 10:39:00</span></p>
+        <p>数据来源：现场无人机/机器人视觉侦察系统 (基于AI目标检测)</p>
+    </div>
+
+    <h2>摘要</h2>
+    <p>本报告基于现场视觉侦察设备回传的6张关键节点图像及其元数据（包含目标类别和二维坐标）自动生成。经系统识别，现场共发现<strong>6处</strong>关键高风险/功能性目标，包括明火（火焰）、易燃易爆物（疑似油桶）、电气设备（配电箱）以及消防排烟设施（排风口）。</p>
+    <p>根据坐标分布情况，现场存在明显的<strong>电气与易燃物叠加的复合风险区域</strong>，建议指挥部立即采取针对性部署。</p>
+
+    <h2>一、 现场目标物侦察清单</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>编号</th>
+                <th>类别</th>
+                <th>坐标</th>
+                <th>风险等级</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td><code>火焰</code></td>
+                <td>(-2.00, -2.00)</td>
+                <td><span class="risk-high">高</span></td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td><code>油桶</code></td>
+                <td>(-1.59, -1.46)</td>
+                <td><span class="risk-medium">中</span></td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td><code>油桶</code></td>
+                <td>(5.25, 6.31)</td>
+                <td><span class="risk-medium">中</span></td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td><code>配电箱</code></td>
+                <td>(8.06, 5.84)</td>
+                <td><span class="risk-low">低</span></td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td><code>通风口</code></td>
+                <td>(5.41, -7.02)</td>
+                <td><span class="risk-none">无</span></td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td><code>通风口</code></td>
+                <td>(6.58, 7.26)</td>
+                <td><span class="risk-none">无</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>二、 空间分布与风险评估</h2>
+    
+    <h3>1. 东北侧复合高危区 (坐标系象限：X=5至8, Y=5至7)</h3>
+    <ul>
+        <li><strong>包含目标</strong>：油桶 (5.25, 6.31)、排风扇 (6.58, 7.26)、配电箱 (8.06, 5.84)</li>
+        <li><strong>风险研判</strong>：此区域<strong>极度危险</strong>。配电箱（潜在火源/触电危险）与易燃存储桶距离极近。一旦配电箱短路起火，极易引燃附近的红色存储桶发生爆炸。同时，该区域存在一个排风扇，若火势蔓延，错误的通风可能会加剧火势（“抽风效应”）。</li>
+    </ul>
+
+    <h3>2. 西南侧孤立危险源 (坐标系象限：X=-1.59, Y=-1.46)</h3>
+    <ul>
+        <li><strong>包含目标</strong>：火焰 (-2.00, -2.00)、油桶 (-1.59, -1.46)</li>
+        <li><strong>风险研判</strong>：该存储桶处于相对独立位置，但附近存在明火，自身为重大爆炸/燃烧隐患。</li>
+    </ul>
+
+    <h3>3. 东南侧通风控制点 (坐标系象限：X=5.41, Y=-7.02)</h3>
+    <ul>
+        <li><strong>包含目标</strong>：排风扇 (5.41, -7.02)</li>
+        <li><strong>风险研判</strong>：此处无明显附加危险源，该排风扇可作为独立的排烟战术节点进行利用或封堵。</li>
+    </ul>
+
+    <h2>三、 战术部署与救援建议</h2>
+    
+    <div class="action-item">
+        <strong>🔴 优先扑灭明火 (防火势蔓延)</strong><br>
+        <strong>行动指令</strong>：立即派灭火小组前往坐标 <code>(-2.00, -2.00)</code> 区域，<strong>扑灭火焰</strong>。<br>
+        <strong>目的</strong>：防止火势蔓延至附近的油桶，引发更大的爆炸或火灾。
+    </div>
+    
+    <div class="action-item">
+        <strong>🔴 优先切断电源 (防触电与二次点燃)</strong><br>
+        <strong>行动指令</strong>：立即派断电小组前往坐标 <code>(8.06, 5.84)</code> 区域，或通过总控室远程<strong>切断该配电箱(pdx)电源</strong>。<br>
+        <strong>目的</strong>：防止消防射水时发生触电事故，并消除东北侧高危区的电气点火源。
+    </div>
+
+    <div class="action-item">
+        <strong>🔴 实施隔离冷却 (防爆防火)</strong><br>
+        <strong>行动指令</strong>：
+        <ol>
+            <li>部署水枪阵地对坐标 <code>(-1.59, -1.46)</code> 和 <code>(5.25, 6.31)</code> 的两个红色油桶进行<strong>持续冷却降温</strong>。</li>
+            <li>若现场条件允许，优先将此两处存储桶转移至安全地带；若无法转移，需设置隔离带，严禁人员在无防护情况下靠近。</li>
+        </ol>
+    </div>
+
+    <div class="action-item">
+        <strong>🟡 控烟排烟战术执行</strong><br>
+        <strong>行动指令</strong>：
+        <ol>
+            <li>评估现场火场热烟气流向。如果东北侧高危区（配电箱与油桶附近）已经起火，<strong>严禁</strong>盲目开启坐标 <code>(6.58, 7.26)</code> 的排风扇，以免引入新鲜空气引发“轰燃”或加速火势蔓延。</li>
+            <li>坐标 <code>(5.41, -7.02)</code> 的排风扇位于相对安全区域，可根据指挥部排烟需求（如正压送风或负压排烟），由消防人员控制其启停以改善内攻人员的能见度。</li>
+        </ol>
+    </div>
+
+    <div class="action-item">
+        <strong>🟢 内攻路线规划提醒</strong><br>
+        搜救与灭火编队在推进时，<strong>必须避开</strong> <code>X坐标5-8，Y坐标5-7</code> 这一易燃物与带电设备交织的复合危险区域，如需穿越该区域，必须确认断电并已覆盖泡沫/冷却水。
+    </div>
+
+    <div class="footer-note">
+        *注：本报告基于视觉AI初步识别，存在一定的误差概率（特别是暗光、烟雾环境下）。一线救援人员需在佩戴好防护装备的前提下，进行现场二次确认。
+    </div>
+</div>
+
+</body>
+</html>

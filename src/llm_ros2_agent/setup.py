@@ -20,7 +20,7 @@ setup(
         ),
         ("share/" + package_name + "/launch", ["launch/voice_command.launch.py"]),
     ],
-    install_requires=["setuptools", "openai", "lark-oapi", "reportlab"],
+    install_requires=["setuptools", "openai", "lark-oapi"],
     zip_safe=True,
     maintainer="ubuntu22",
     maintainer_email="ubuntu22@todo.todo",

@@ -6,6 +6,6 @@ __pycache__/
 *.pyc
 .env
 .cursor
-fire_reports/
 rosbag2_2026_04_13-05_02_23
 output/
+saved_targets/

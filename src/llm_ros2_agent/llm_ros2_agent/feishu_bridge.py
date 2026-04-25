@@ -68,7 +68,7 @@ class FeishuBridge(Node):
 
         reply = msg.data.strip()
         suffix = Path(reply).suffix.lower()
-        if suffix in {".jpg", ".pdf"}:
+        if suffix in {".jpg", ".pdf", ".html"}:
             reply_path = Path(reply)
             if reply_path.is_file():
                 if suffix == ".jpg":
@@ -96,11 +96,12 @@ class FeishuBridge(Node):
         if not response.success():
             self.get_logger().warn(f"飞书回执发送失败: code={response.code}, msg={response.msg}")
 
-    # 回传pdf消息
+    # 回传文件消息
     def send_back_file(self, chat_id, file_path):
+        file_type = "pdf" if file_path.suffix.lower() == ".pdf" else "stream"
         with open(file_path, "rb") as file_obj:
             upload_request_body = lark.im.v1.CreateFileRequestBody.builder() \
-                .file_type("pdf") \
+                .file_type(file_type) \
                 .file_name(file_path.name) \
                 .file(file_obj) \
                 .build()
