@@ -3,13 +3,22 @@
 
   <link name="base_footprint"/>
 
-  <joint name="base_link_to_base_link" type="fixed">
+  <joint name="base_footprint_to_base_link" type="fixed">
     <parent link="base_footprint"/>
     <child link="base_link"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
   <link name="base_link"/>
+
+  <!-- The simulated IMU is mounted directly on base_link. -->
+  <joint name="base_link_to_imu_link" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="imu_link"/>
 
   <joint name="base_link_to_camera_link" type="fixed">
     <parent link="base_link"/>
@@ -27,12 +36,12 @@
 
   <link name="lidar_link"/>
 
-  <!-- Compatibility alias for the older lidar-only model. -->
+  <!-- Compatibility alias for the older lidar-only model.
   <joint name="base_link_to_link" type="fixed">
     <parent link="base_link"/>
     <child link="link"/>
     <origin xyz="0.12 0 0.315" rpy="0 0 0"/>
   </joint>
 
-  <link name="link"/>
+  <link name="link"/> -->
 </robot>

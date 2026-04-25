@@ -7,6 +7,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rosgraph_msgs REQUIRED)
@@ -16,6 +17,7 @@ add_executable(px4_odom_tf_publisher src/px4_odom_tf_publisher.cpp)
 ament_target_dependencies(
   px4_odom_tf_publisher
   geometry_msgs
+  nav_msgs
   px4_msgs
   rclcpp
   rosgraph_msgs

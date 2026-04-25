@@ -5,7 +5,7 @@ import os
 import shlex
 import subprocess
 
-DEFAULT_WORLD = 'room'
+DEFAULT_WORLD = 'flyfield4'
 DEFAULT_MODEL_STORE = os.path.expanduser('~/.simulation-gazebo')
 
 

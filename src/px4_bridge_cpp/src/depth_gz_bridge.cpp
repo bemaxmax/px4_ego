@@ -26,7 +26,10 @@ private:
   void depthCallback(const sensor_msgs::msg::Image::SharedPtr msg)
   {
     sensor_msgs::msg::Image out;
-    out.header.stamp = get_clock()->now();
+    out.header.stamp = msg->header.stamp;
+    if (out.header.stamp.sec == 0 && out.header.stamp.nanosec == 0) {
+      out.header.stamp = get_clock()->now();
+    }
     out.header.frame_id = frame_id_;
     out.height = msg->height;
     out.width = msg->width;
