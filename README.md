@@ -257,3 +257,10 @@ MicroXRCEAgent udp4 -p 8888
 Gazebo 启动失败时，检查 `~/.simulation-gazebo` 下的模型、世界和 `server.config`。
 
 检测没有结果时，依次检查：
+
+```bash
+ros2 topic hz /rgb_camera
+ros2 topic hz /depth_camera_bestef
+ros2 topic hz /ego/odom_world
+ls src/detect/models/best.pt
+```
