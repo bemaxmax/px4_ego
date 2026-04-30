@@ -9,6 +9,9 @@ def collect_data_files(source_dir):
     data_files = []
 
     for root, _, files in os.walk(source_dir):
+        if '__pycache__' in root.split(os.sep):
+            continue
+        files = [file_name for file_name in files if not file_name.endswith('.pyc')]
         if not files:
             continue
 
@@ -42,7 +45,6 @@ setup(
         'console_scripts': [
             "offboard_control_test = px4_ego_py.offboard_control_test:main",
             "ds5_mode_teleop = px4_ego_py.ds5_mode_teleop:main",
-            "odom_to_tf_publisher = px4_ego_py.odom_to_tf_publisher:main",
             "websocket_bridge = px4_ego_py.websocket_bridge:main",
         ],
     },

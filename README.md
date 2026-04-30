@@ -22,13 +22,12 @@ PX4 SITL、Gazebo Harmonic、Offboard 位置控制、RGB-D 目标检测、网页
 
 | 包 | 作用 |
 | --- | --- |
-| `px4_ego_py` | PX4 Offboard 状态机、DS5 手柄控制、WebSocket 数据桥、辅助 TF 节点 |
+| `px4_ego_py` | PX4 Offboard 状态机、DS5 手柄控制、WebSocket 数据桥 |
 | `px4_bridge_cpp` | C++ 桥接节点：Gazebo 真值里程计、深度图 QoS 转发、点云坐标转换、`/cmd_vel` 到位置指令 |
 | `detect` | RGB-D 目标检测，保存目标图片并发布检测结果 |
 | `llm_ros2_agent` | 中文语音/飞书指令、大模型解析、n8n 回调、报告生成 |
 | `px4_msgs` | PX4 v1.14 消息定义 |
 | `quadrotor_msgs` | EGO/quadrotor 相关消息，主要使用 `PositionCommand` |
-| `px4_odom_tf` | PX4 本地位置到 `/odom` 和 TF 的辅助发布节点 |
 
 ## 依赖准备
 
@@ -194,6 +193,7 @@ ros2 launch llm_ros2_agent voice_command.launch.py
 需要提前设置环境变量：
 
 ```bash
+export MINIMAX_API_KEY=...
 export QWEN_API_KEY=...
 export FEISHU_APP_ID=...
 export FEISHU_APP_SECRET=...
@@ -257,10 +257,3 @@ MicroXRCEAgent udp4 -p 8888
 Gazebo 启动失败时，检查 `~/.simulation-gazebo` 下的模型、世界和 `server.config`。
 
 检测没有结果时，依次检查：
-
-```bash
-ros2 topic hz /rgb_camera
-ros2 topic hz /depth_camera_bestef
-ros2 topic hz /ego/odom_world
-ls src/detect/models/best.pt
-```

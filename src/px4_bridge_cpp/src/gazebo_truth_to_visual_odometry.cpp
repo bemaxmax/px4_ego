@@ -22,7 +22,7 @@
 namespace
 {
 
-constexpr char kModelName[] = "x500_lidar_depth_3d_0";
+constexpr char kDefaultModelName[] = "x500_lidar_depth_3d_0";
 constexpr char kPoseTopic[] = "/world/default/dynamic_pose/info";
 constexpr char kOdomTopic[] = "/ego/odom_world";
 constexpr char kOdomFrameId[] = "world";
@@ -39,6 +39,8 @@ public:
   GazeboTruthToVisualOdometry()
   : Node("gazebo_truth_to_visual_odometry")
   {
+    model_name_ = declare_parameter<std::string>("model_name", kDefaultModelName);
+
     const auto odom_qos = rclcpp::QoS(rclcpp::KeepLast(10))
       .best_effort()
       .durability_volatile();
@@ -68,7 +70,7 @@ public:
       get_logger(),
       "Forwarding Gazebo truth from %s (model %s) to %s and %s",
       kPoseTopic,
-      kModelName,
+      model_name_.c_str(),
       kOdomTopic,
       kVisualOdometryTopic);
   }
@@ -97,7 +99,7 @@ private:
     const auto pose_it = std::find_if(
       msg.pose().begin(),
       msg.pose().end(),
-      [](const gz::msgs::Pose & pose) {return pose.name() == kModelName;});
+      [this](const gz::msgs::Pose & pose) {return pose.name() == model_name_;});
     if (pose_it == msg.pose().end()) {
       return;
     }
@@ -210,6 +212,7 @@ private:
   }
 
   bool have_previous_pose_{false};
+  std::string model_name_;
   uint64_t previous_stamp_us_{0};
   std::array<double, 3> previous_position_enu_{0.0, 0.0, 0.0};
   std::mutex state_mutex_;

@@ -6,6 +6,10 @@ __pycache__/
 *.pyc
 .env
 .cursor
-rosbag2_2026_04_13-05_02_23
+rosbag2_*/
+*.bag
+*.db3
+*.mcap
 output/
 saved_targets/
+AGENTS.md

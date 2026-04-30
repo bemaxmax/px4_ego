@@ -86,14 +86,13 @@ class ReportGenerator(Node):
             self.publish_reply(f"火灾救援辅助决策报告生成失败: {exc}")
             return
 
-        self.publish_reply(f"火灾救援辅助决策报告已生成。\nHTML: {html_path}")
+        self.publish_reply(f"火灾救援辅助决策报告已生成，将下方文件用浏览器打开查看详细内容。")
         self.publish_reply(str(html_path))
 
     # 调用大模型，参考 example.html 直接生成完整 HTML 报告。
     def call_llm(self, targets):
-        api_key = os.environ.get("QWEN_API_KEY") or os.environ["DASHSCOPE_API_KEY"]
         client = OpenAI(
-            api_key=api_key,
+            api_key=os.environ["QWEN_API_KEY"],
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         )
         template_html = TEMPLATE_PATH.read_text(encoding="utf-8")
